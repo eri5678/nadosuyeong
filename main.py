@@ -341,9 +341,11 @@ with tab4:
             st.info("🙂 다시 한 번 도전해보세요!")
 
 # =========================
-# TAB 5 : 미니 스마트팜 시뮬레이터
+# TAB 5 : 미니 스마트팜 시뮬레이터 (확장판)
 # =========================
 with tab5:
+    import numpy as np
+
     st.subheader("🤖 미니 스마트팜 시뮬레이터")
     st.write("환경 조건을 바꾸며 **극지식물 생육 반응**을 시뮬레이션해보세요.")
 
@@ -353,15 +355,50 @@ with tab5:
         use_container_width=True
     )
 
+    # -------------------------
+    # 안전한 EC 데이터 정의 (실제 생육 데이터 기반)
+    # -------------------------
+    all_growth = pd.concat(growth_data.values(), ignore_index=True)
+    x = all_growth["EC"].values if "EC" in all_growth.columns else np.linspace(1.0, 3.0, 10)
+
+    # 회귀 모델 (2차 함수, 설명용)
+    coef = np.polyfit(x, all_growth["생중량(g)"], 2) if "생중량(g)" in all_growth.columns else [0, 0, 1]
+    model = np.poly1d(coef)
+
+    x_line = np.linspace(min(x), max(x), 300)
+    best_ec = x_line[np.argmax(model(x_line))]
+
+    # -------------------------
+    # 환경 입력
+    # -------------------------
     col1, col2, col3 = st.columns(3)
     temp = col1.slider("🌡️ 온도 (℃)", 5.0, 30.0, 18.0)
     hum = col2.slider("💧 습도 (%)", 30.0, 90.0, 60.0)
     ec = col3.slider("⚡ EC", float(min(x)), float(max(x)), float(np.mean(x)), 0.01)
 
-    # 단순 생육 지수 모델 (설명용)
-    ec_effect = model(ec) / model(best_ec)
-    temp_effect = 1 - abs(temp - 18) / 20
-    hum_effect = 1 - abs(hum - 60) / 60
+    # -------------------------
+    # 환경 상태 진단
+    # -------------------------
+    st.markdown("### 🧠 환경 상태 진단")
+
+    def judge(value, low, high, name):
+        if value < low:
+            return f"❌ {name}이(가) 낮아 생육이 저해될 수 있어요."
+        elif value > high:
+            return f"⚠️ {name}이(가) 높아 스트레스를 줄 수 있어요."
+        else:
+            return f"✅ {name} 환경이 적정합니다."
+
+    st.write(judge(temp, 18, 24, "온도"))
+    st.write(judge(hum, 60, 80, "습도"))
+    st.write(judge(ec, best_ec - 0.2, best_ec + 0.2, "EC"))
+
+    # -------------------------
+    # 기존 생육 지수 모델 (안전 보정)
+    # -------------------------
+    ec_effect = model(ec) / model(best_ec) if model(best_ec) != 0 else 0
+    temp_effect = max(0, 1 - abs(temp - 18) / 20)
+    hum_effect = max(0, 1 - abs(hum - 60) / 60)
 
     growth_index = max(ec_effect * temp_effect * hum_effect * 100, 0)
 
@@ -373,3 +410,57 @@ with tab5:
         st.warning("⚠️ 생육은 가능하지만 개선 여지가 있습니다.")
     else:
         st.error("❌ 환경 조건이 생육에 부적합합니다.")
+
+    # -------------------------
+    # ⏳ 시간 경과 시뮬레이션
+    # -------------------------
+    st.markdown("### ⏳ 시간 경과 시뮬레이션")
+
+    if "sim_day" not in st.session_state:
+        st.session_state.sim_day = 0
+        st.session_state.sim_weight = 5.0
+
+    def grow_one_day():
+        daily_growth = max(growth_index / 100, 0)
+        st.session_state.sim_weight += daily_growth
+        st.session_state.sim_day += 1
+
+    colA, colB, colC, colD = st.columns(4)
+
+    if colA.button("+1일"):
+        grow_one_day()
+    if colB.button("+2일"):
+        for _ in range(2):
+            grow_one_day()
+    if colC.button("+3일"):
+        for _ in range(3):
+            grow_one_day()
+
+    custom_days = colD.number_input("일수 지정", 1, 30, 5)
+    if st.button("▶ 시뮬레이션 실행"):
+        for _ in range(custom_days):
+            grow_one_day()
+
+    # 결과 표시
+    st.metric("경과 일수", f"{st.session_state.sim_day} 일")
+    st.metric("예상 생중량", f"{st.session_state.sim_weight:.2f} g")
+
+    days = np.arange(0, st.session_state.sim_day + 1)
+    weights = np.linspace(5.0, st.session_state.sim_weight, len(days))
+
+    fig_sim = px.line(
+        x=days,
+        y=weights,
+        labels={"x": "일(day)", "y": "생중량(g)"},
+        title="시간 경과에 따른 생중량 변화 (시뮬레이션)"
+    )
+
+    fig_sim.update_layout(
+        font=dict(family="Malgun Gothic, Apple SD Gothic Neo, sans-serif")
+    )
+
+    st.plotly_chart(fig_sim, use_container_width=True)
+
+    if st.button("🔄 시뮬레이션 초기화"):
+        st.session_state.sim_day = 0
+        st.session_state.sim_weight = 5.0
