@@ -463,3 +463,55 @@ with tab5:
         del st.session_state.leaf
         del st.session_state.length
         del st.session_state.weight
+    # =========================
+# 🌱 생육 단계 + 상태 종합 시각화
+# =========================
+st.markdown("## 🌱 생육 단계 시각화")
+
+day = st.session_state.sim_day
+gi = growth_index
+
+# 단계별 판정
+if day < 3:
+    stage = "발아 단계"
+    status = "발아 중"
+    desc = "씨앗이 수분을 흡수하고 뿌리가 나오기 시작하는 단계입니다."
+    img_url = "https://images.unsplash.com/photo-1587049352851-8d7e44b39e47"
+
+elif day < 7:
+    stage = "초기 생장 단계"
+    if gi >= 50:
+        status = "정상 생장"
+        desc = "떡잎과 본잎이 자라며 안정적으로 초기 생장이 진행 중입니다."
+        img_url = "https://images.unsplash.com/photo-1515150144380-bca9f1650ed9"
+    else:
+        status = "초기 스트레스"
+        desc = "환경 조건이 불안정하여 초기 생장에 스트레스를 받고 있습니다."
+        img_url = "https://images.unsplash.com/photo-1504712598893-24159a89200e"
+
+else:
+    stage = "본격 생장 단계"
+    if gi >= 80:
+        status = "건강한 성장"
+        desc = "환경 조건이 매우 적절하여 식물이 건강하게 성장했습니다."
+        img_url = "https://images.unsplash.com/photo-1466692476868-aef1dfb1e735"
+    elif gi >= 50:
+        status = "부분적 성장"
+        desc = "성장은 이루어졌지만 일부 환경 요인으로 제한이 있었습니다."
+        img_url = "https://images.unsplash.com/photo-1501004318641-b39e6451bec6"
+    else:
+        status = "생육 실패"
+        desc = "환경 조건이 부적절하여 정상적인 생육이 이루어지지 않았습니다."
+        img_url = "https://images.unsplash.com/photo-1524594150408-dc9f1e8f1e98"
+
+# 출력
+st.subheader(f"🌿 현재 단계: {stage}")
+st.write(f"**상태:** {status}")
+st.write(desc)
+
+st.image(
+    img_url,
+    caption=f"{stage} | {status} (경과 {day}일, 생육 지수 {gi:.1f})",
+    use_container_width=True
+)
+
