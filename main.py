@@ -280,6 +280,22 @@ with tab3:
 # =========================
 # 🔥 추가 TAB 구성 (기존 코드 아래에 이어서)
 # =========================
+all_growth = pd.concat(growth_data.values(), ignore_index=True)
+
+school_avg_ec = {s: env_data[s]["ec"].mean() for s in env_data}
+all_growth["EC"] = all_growth["학교"].map(school_avg_ec)
+
+ec_summary = all_growth.groupby("EC", as_index=False)["생중량(g)"].mean()
+
+x = ec_summary["EC"].values
+y = ec_summary["생중량(g)"].values
+
+coef = np.polyfit(x, y, 2)
+model = np.poly1d(coef)
+
+best_ec = ec_summary.loc[
+    ec_summary["생중량(g)"].idxmax(), "EC"
+]
 tab4, tab5 = st.tabs(["🎮 EC 맞히기 게임", "🤖 스마트팜 시뮬레이터"])
 
 # =========================
