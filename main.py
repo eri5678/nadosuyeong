@@ -280,6 +280,8 @@ with tab3:
     st.subheader("📈 EC–생중량 회귀 분석 (실험값 + 모델)")
 
 # 회귀 곡선용 x 범위
+x = df["EC"].values
+y = df["평균생중량"].values
 x_line = np.linspace(min(x), max(x), 300)
 y_line = model(x_line)
 
