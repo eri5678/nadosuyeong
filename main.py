@@ -342,11 +342,11 @@ with tab4:
             st.info("🙂 다시 한 번 도전해보세요!")
 
 # =========================
-# TAB 5 : 미니 스마트팜 시뮬레이터
+# TAB 5 : 미니 스마트팜 시뮬레이터 (확장)
 # =========================
 with tab5:
     st.subheader("🤖 미니 스마트팜 시뮬레이터")
-    st.write("환경 조건을 바꾸며 **극지식물 생육 반응**을 시뮬레이션해보세요.")
+    st.write("환경 조건에 따라 **식물 상태 진단 + 시간 경과 생육 변화**를 확인해보세요.")
 
     st.image(
         "https://images.unsplash.com/photo-1581091012184-7c54ab7b2d66",
@@ -354,23 +354,112 @@ with tab5:
         use_container_width=True
     )
 
+    # -------------------------
+    # 환경 입력
+    # -------------------------
     col1, col2, col3 = st.columns(3)
     temp = col1.slider("🌡️ 온도 (℃)", 5.0, 30.0, 18.0)
     hum = col2.slider("💧 습도 (%)", 30.0, 90.0, 60.0)
     ec = col3.slider("⚡ EC", float(min(x)), float(max(x)), float(np.mean(x)), 0.01)
 
-    # 단순 생육 지수 모델 (설명용)
-    ec_effect = model(ec) / model(best_ec)
-    temp_effect = 1 - abs(temp - 18) / 20
-    hum_effect = 1 - abs(hum - 60) / 60
+    # -------------------------
+    # 환경 상태 진단
+    # -------------------------
+    st.markdown("### 🧠 환경 상태 분석")
 
-    growth_index = max(ec_effect * temp_effect * hum_effect * 100, 0)
+    problems = []
 
-    st.metric("🌱 예상 생육 지수", f"{growth_index:.1f} / 100")
+    if temp < 15:
+        problems.append("🌡️ 온도가 낮아 **대사 속도가 감소**하고 생장이 느려질 수 있습니다.")
+    elif temp > 25:
+        problems.append("🌡️ 온도가 높아 **호흡량 증가 → 에너지 소모**가 커질 수 있습니다.")
 
-    if growth_index > 80:
-        st.success("✅ 매우 이상적인 스마트팜 환경입니다!")
-    elif growth_index > 50:
-        st.warning("⚠️ 생육은 가능하지만 개선 여지가 있습니다.")
+    if hum < 50:
+        problems.append("💧 습도가 낮아 **증산 작용 증가 → 수분 부족**이 발생할 수 있습니다.")
+    elif hum > 85:
+        problems.append("💧 습도가 높아 **곰팡이·병해 발생 위험**이 있습니다.")
+
+    if ec < best_ec - 0.3:
+        problems.append("⚡ EC가 낮아 **양분 부족 → 잎·줄기 생장 저하**가 발생할 수 있습니다.")
+    elif ec > best_ec + 0.3:
+        problems.append("⚡ EC가 높아 **삼투 스트레스 → 뿌리 손상** 위험이 있습니다.")
+
+    if not problems:
+        st.success("✅ 현재 환경은 온도·습도·EC 모두 적정합니다!")
     else:
-        st.error("❌ 환경 조건이 생육에 부적합합니다.")
+        for p in problems:
+            st.warning(p)
+
+    # -------------------------
+    # 생육 지수 계산 (안전 보정)
+    # -------------------------
+    ec_effect = model(ec) / model(best_ec) if model(best_ec) != 0 else 0
+    temp_effect = max(0, 1 - abs(temp - 18) / 20)
+    hum_effect = max(0, 1 - abs(hum - 60) / 60)
+
+    growth_index = max(ec_effect * temp_effect * hum_effect, 0)
+
+    st.metric("🌱 현재 생육 적합도", f"{growth_index*100:.1f} / 100")
+
+    # -------------------------
+    # ⏳ 시간 경과 생육 시뮬레이션
+    # -------------------------
+    st.markdown("### ⏳ 시간 경과 생육 시뮬레이션")
+
+    if "sim_day" not in st.session_state:
+        st.session_state.sim_day = 0
+        st.session_state.leaf = 2
+        st.session_state.length = 30.0   # mm
+        st.session_state.weight = 5.0    # g
+
+    def grow_one_day():
+        rate = max(growth_index, 0.1)
+
+        st.session_state.sim_day += 1
+        st.session_state.leaf += rate * 0.3
+        st.session_state.length += rate * 2.0
+        st.session_state.weight += rate * 0.5
+
+    colA, colB, colC = st.columns(3)
+
+    if colA.button("➕ 1일"):
+        grow_one_day()
+    if colB.button("➕ 3일"):
+        for _ in range(3):
+            grow_one_day()
+    if colC.button("➕ 7일"):
+        for _ in range(7):
+            grow_one_day()
+
+    # -------------------------
+    # 결과 표시
+    # -------------------------
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("🌿 식물 나이", f"{st.session_state.sim_day} 일")
+    col2.metric("🍃 잎 개수", f"{int(st.session_state.leaf)} 장")
+    col3.metric("📏 길이", f"{st.session_state.length:.1f} mm")
+    col4.metric("⚖️ 생중량", f"{st.session_state.weight:.2f} g")
+
+    # -------------------------
+    # 성장 그래프
+    # -------------------------
+    days = np.arange(st.session_state.sim_day + 1)
+    weights = np.linspace(5.0, st.session_state.weight, len(days))
+
+    fig = px.line(
+        x=days,
+        y=weights,
+        labels={"x": "경과 일수(day)", "y": "생중량(g)"},
+        title="시간 경과에 따른 생중량 변화 (시뮬레이션)"
+    )
+    fig.update_layout(
+        font=dict(family="Malgun Gothic, Apple SD Gothic Neo, sans-serif")
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    if st.button("🔄 시뮬레이션 초기화"):
+        del st.session_state.sim_day
+        del st.session_state.leaf
+        del st.session_state.length
+        del st.session_state.weight
