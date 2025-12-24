@@ -276,3 +276,83 @@ with tab3:
                 file_name=f"{school}_생육결과.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
+# =========================
+# 🔥 추가 TAB 구성 (기존 코드 아래에 이어서)
+# =========================
+tab4, tab5 = st.tabs(["🎮 EC 맞히기 게임", "🤖 스마트팜 시뮬레이터"])
+
+# =========================
+# TAB 4 : EC 맞히기 게임
+# =========================
+with tab4:
+    st.subheader("🎯 EC 맞히기 게임")
+    st.write("슬라이더로 EC를 조절하고, 해당 조건에서의 **예상 생중량**을 맞혀보세요!")
+
+    st.image(
+        "https://images.unsplash.com/photo-1582281298055-e25b84a30b0b",
+        caption="극지 환경에서도 생육 가능한 식물",
+        use_container_width=True
+    )
+
+    # EC-생중량 회귀 모델 생성
+    all_growth = pd.concat(growth_data.values(), ignore_index=True)
+    school_avg_ec = {s: env_data[s]["ec"].mean() for s in env_data}
+    all_growth["EC"] = all_growth["학교"].map(school_avg_ec)
+
+    ec_summary = all_growth.groupby("EC", as_index=False)["생중량(g)"].mean()
+
+    x = ec_summary["EC"].values
+    y = ec_summary["생중량(g)"].values
+    coef = np.polyfit(x, y, 2)
+    model = np.poly1d(coef)
+
+    ec_guess = st.slider("EC 값을 선택하세요", float(min(x)), float(max(x)), float(np.mean(x)), 0.01)
+
+    if st.button("🔍 결과 확인"):
+        predicted = model(ec_guess)
+        best_ec = ec_summary.loc[ec_summary["생중량(g)"].idxmax(), "EC"]
+        error = abs(ec_guess - best_ec) / best_ec * 100
+
+        col1, col2, col3 = st.columns(3)
+        col1.metric("예상 생중량", f"{predicted:.2f} g")
+        col2.metric("실제 최적 EC", f"{best_ec:.2f}")
+        col3.metric("오차", f"{error:.1f} %")
+
+        if error < 5:
+            st.success("🎉 거의 정답입니다! EC 감각이 뛰어나네요!")
+        else:
+            st.info("🙂 다시 한 번 도전해보세요!")
+
+# =========================
+# TAB 5 : 미니 스마트팜 시뮬레이터
+# =========================
+with tab5:
+    st.subheader("🤖 미니 스마트팜 시뮬레이터")
+    st.write("환경 조건을 바꾸며 **극지식물 생육 반응**을 시뮬레이션해보세요.")
+
+    st.image(
+        "https://images.unsplash.com/photo-1581091012184-7c54ab7b2d66",
+        caption="스마트팜 환경 제어 시스템",
+        use_container_width=True
+    )
+
+    col1, col2, col3 = st.columns(3)
+    temp = col1.slider("🌡️ 온도 (℃)", 5.0, 30.0, 18.0)
+    hum = col2.slider("💧 습도 (%)", 30.0, 90.0, 60.0)
+    ec = col3.slider("⚡ EC", float(min(x)), float(max(x)), float(np.mean(x)), 0.01)
+
+    # 단순 생육 지수 모델 (설명용)
+    ec_effect = model(ec) / model(best_ec)
+    temp_effect = 1 - abs(temp - 18) / 20
+    hum_effect = 1 - abs(hum - 60) / 60
+
+    growth_index = max(ec_effect * temp_effect * hum_effect * 100, 0)
+
+    st.metric("🌱 예상 생육 지수", f"{growth_index:.1f} / 100")
+
+    if growth_index > 80:
+        st.success("✅ 매우 이상적인 스마트팜 환경입니다!")
+    elif growth_index > 50:
+        st.warning("⚠️ 생육은 가능하지만 개선 여지가 있습니다.")
+    else:
+        st.error("❌ 환경 조건이 생육에 부적합합니다.")
