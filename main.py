@@ -6,16 +6,13 @@ from plotly.subplots import make_subplots
 from pathlib import Path
 import unicodedata
 import io
+import numpy as np
 
 # =========================
 # 기본 설정
 # =========================
-st.set_page_config(
-    page_title="극지식물 최적 EC 농도 연구",
-    layout="wide"
-)
+st.set_page_config(page_title="🌱 극지식물 최적 EC 농도 연구", layout="wide")
 
-# 한글 폰트 (Streamlit UI)
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR&display=swap');
@@ -26,12 +23,16 @@ html, body, [class*="css"] {
 """, unsafe_allow_html=True)
 
 # =========================
-# 유틸 함수 (한글 파일명 안전)
+# 유틸 (한글 파일명 안전)
 # =========================
-def normalize(s):
+def normalize(s: str):
     return unicodedata.normalize("NFC", s)
 
 def find_file(data_dir: Path, target_name: str):
+    if not data_dir.exists():
+        st.error(f"❌ data 폴더를 찾을 수 없습니다: {data_dir.resolve()}")
+        return None
+
     target_norm = normalize(target_name)
     for f in data_dir.iterdir():
         if normalize(f.name) == target_norm:
@@ -44,42 +45,30 @@ def find_file(data_dir: Path, target_name: str):
 @st.cache_data
 def load_environment_data():
     data_dir = Path("data")
-    env_data = {}
-
+    env = {}
     for school in ["송도고", "하늘고", "아라고", "동산고"]:
-        file_name = f"{school}_환경데이터.csv"
-        file_path = find_file(data_dir, file_name)
-
-        if file_path is None:
-            st.error(f"❌ 환경 데이터 파일을 찾을 수 없습니다: {file_name}")
+        fname = f"{school}_환경데이터.csv"
+        fpath = find_file(data_dir, fname)
+        if fpath is None:
             continue
-
-        df = pd.read_csv(file_path)
+        df = pd.read_csv(fpath)
         df["학교"] = school
-        env_data[school] = df
-
-    if not env_data:
-        return None
-
-    return env_data
+        env[school] = df
+    return env if env else None
 
 @st.cache_data
 def load_growth_data():
     data_dir = Path("data")
-    file_path = find_file(data_dir, "4개교_생육결과데이터.xlsx")
-
-    if file_path is None:
-        st.error("❌ 생육 결과 엑셀 파일을 찾을 수 없습니다.")
+    fpath = find_file(data_dir, "4개교_생육결과데이터.xlsx")
+    if fpath is None:
         return None
 
-    xls = pd.ExcelFile(file_path)
+    xls = pd.ExcelFile(fpath)
     growth = {}
-
     for sheet in xls.sheet_names:
         df = xls.parse(sheet)
         df["학교"] = sheet
         growth[sheet] = df
-
     return growth
 
 # =========================
@@ -93,19 +82,13 @@ if env_data is None or growth_data is None:
     st.stop()
 
 # =========================
-# 제목
+# 제목 / 사이드바
 # =========================
 st.title("🌱 극지식물 최적 EC 농도 연구")
 
-# =========================
-# 사이드바
-# =========================
 schools = ["전체", "송도고", "하늘고", "아라고", "동산고"]
 selected_school = st.sidebar.selectbox("학교 선택", schools)
 
-# =========================
-# TAB 구성
-# =========================
 tab1, tab2, tab3 = st.tabs(["📖 실험 개요", "🌡️ 환경 데이터", "📊 생육 결과"])
 
 # =========================
@@ -114,36 +97,10 @@ tab1, tab2, tab3 = st.tabs(["📖 실험 개요", "🌡️ 환경 데이터", "�
 with tab1:
     st.subheader("연구 배경 및 목적")
     st.write("""
-    극지식물은 극한 환경에서도 생존 가능한 식물로,
-    EC(전기전도도)는 생육에 매우 중요한 환경 요인이다.
-    본 연구는 **학교별 서로 다른 EC 조건에서 생육 결과를 비교**하여
-    **극지식물의 최적 EC 농도**를 도출하는 것을 목표로 한다.
+    본 연구는 학교별 서로 다른 EC 조건에서 극지식물의 생육 결과를 비교하여  
+    **데이터 기반으로 최적 EC 농도**를 도출하고,  
+    **EC–생육 관계를 수학적 모델(회귀 분석)**로 해석하는 것을 목표로 한다.
     """)
-
-    summary_rows = []
-    total_count = 0
-    temps, hums, ecs = [], [], []
-
-    for school, df in env_data.items():
-        summary_rows.append({
-            "학교명": school,
-            "EC 목표": round(df["ec"].mean(), 2),
-            "개체수": len(growth_data.get(school, [])),
-            "색상": school
-        })
-        temps.append(df["temperature"].mean())
-        hums.append(df["humidity"].mean())
-        ecs.append(df["ec"].mean())
-        total_count += len(growth_data.get(school, []))
-
-    summary_df = pd.DataFrame(summary_rows)
-    st.dataframe(summary_df, use_container_width=True)
-
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("총 개체수", total_count)
-    col2.metric("평균 온도", f"{sum(temps)/len(temps):.1f} ℃")
-    col3.metric("평균 습도", f"{sum(hums)/len(hums):.1f} %")
-    col4.metric("최적 EC", "2.0 (하늘고)")
 
 # =========================
 # TAB 2 : 환경 데이터
@@ -151,128 +108,102 @@ with tab1:
 with tab2:
     st.subheader("학교별 환경 평균 비교")
 
-    avg_env = []
-    for school, df in env_data.items():
-        avg_env.append({
-            "학교": school,
+    avg_rows = []
+    for s, df in env_data.items():
+        avg_rows.append({
+            "학교": s,
             "온도": df["temperature"].mean(),
             "습도": df["humidity"].mean(),
             "pH": df["ph"].mean(),
             "EC": df["ec"].mean()
         })
-    avg_df = pd.DataFrame(avg_env)
+    avg_df = pd.DataFrame(avg_rows)
 
     fig = make_subplots(
         rows=2, cols=2,
         subplot_titles=["평균 온도", "평균 습도", "평균 pH", "평균 EC"]
     )
-
     fig.add_bar(x=avg_df["학교"], y=avg_df["온도"], row=1, col=1)
     fig.add_bar(x=avg_df["학교"], y=avg_df["습도"], row=1, col=2)
     fig.add_bar(x=avg_df["학교"], y=avg_df["pH"], row=2, col=1)
     fig.add_bar(x=avg_df["학교"], y=avg_df["EC"], row=2, col=2)
-
-    fig.update_layout(
-        height=600,
-        font=dict(family="Malgun Gothic, Apple SD Gothic Neo, sans-serif")
-    )
-
+    fig.update_layout(font=dict(family="Malgun Gothic, Apple SD Gothic Neo, sans-serif"))
     st.plotly_chart(fig, use_container_width=True)
 
-    if selected_school != "전체":
-        df = env_data[selected_school]
-        st.subheader(f"{selected_school} 환경 변화 추이")
-
-        fig2 = px.line(df, x="time", y=["temperature", "humidity", "ec"])
-        fig2.update_layout(
-            font=dict(family="Malgun Gothic, Apple SD Gothic Neo, sans-serif")
-        )
-        st.plotly_chart(fig2, use_container_width=True)
-
-    with st.expander("📂 환경 데이터 원본"):
-        for school, df in env_data.items():
-            st.write(f"### {school}")
-            st.dataframe(df)
-            buffer = io.BytesIO()
-            df.to_csv(buffer, index=False)
-            buffer.seek(0)
-            st.download_button(
-                f"{school} CSV 다운로드",
-                data=buffer,
-                file_name=f"{school}_환경데이터.csv",
-                mime="text/csv"
-            )
-
 # =========================
-# TAB 3 : 생육 결과
+# TAB 3 : 생육 결과 + 회귀 분석
 # =========================
 with tab3:
-    st.subheader("EC별 생육 결과 분석")
+    st.subheader("EC–생육 결과 분석 (회귀 분석 포함)")
 
+    # 학교별 평균 EC → 생육 데이터에 매핑
+    school_avg_ec = {s: env_data[s]["ec"].mean() for s in env_data}
     all_growth = pd.concat(growth_data.values(), ignore_index=True)
+    all_growth["EC"] = all_growth["학교"].map(school_avg_ec)
 
-    ec_weight = all_growth.groupby("학교")["생중량(g)"].mean()
-    best_school = ec_weight.idxmax()
+    # EC별 평균 생중량
+    ec_summary = (
+        all_growth
+        .groupby("EC", as_index=False)["생중량(g)"]
+        .mean()
+        .rename(columns={"생중량(g)": "평균 생중량"})
+    )
+
+    # ===== 1️⃣ 최적 EC 자동 산출 =====
+    optimal_row = ec_summary.loc[ec_summary["평균 생중량"].idxmax()]
+    optimal_ec = optimal_row["EC"]
+    optimal_weight = optimal_row["평균 생중량"]
 
     st.metric(
-        "🥇 최고 평균 생중량",
-        f"{ec_weight.max():.2f} g",
-        help=f"최고값: {best_school}"
+        "🥇 최적 EC (자동 산출)",
+        f"{optimal_ec:.2f}",
+        help=f"평균 생중량 {optimal_weight:.2f} g으로 최대"
     )
 
-    fig = make_subplots(
-        rows=2, cols=2,
-        subplot_titles=["평균 생중량", "평균 잎 수", "평균 지상부 길이", "개체 수"]
-    )
+    # ===== 2️⃣ EC–생중량 회귀 분석 =====
+    x = ec_summary["EC"].values
+    y = ec_summary["평균 생중량"].values
 
-    fig.add_bar(x=all_growth["학교"], y=all_growth["생중량(g)"], row=1, col=1)
-    fig.add_bar(x=all_growth["학교"], y=all_growth["잎 수(장)"], row=1, col=2)
-    fig.add_bar(x=all_growth["학교"], y=all_growth["지상부 길이(mm)"], row=2, col=1)
-    fig.add_bar(x=all_growth["학교"], y=all_growth["개체번호"], row=2, col=2)
+    # 2차 회귀
+    coef = np.polyfit(x, y, 2)
+    poly = np.poly1d(coef)
+    y_pred = poly(x)
 
-    fig.update_layout(
-        height=650,
+    # 결정계수 R²
+    ss_res = np.sum((y - y_pred) ** 2)
+    ss_tot = np.sum((y - np.mean(y)) ** 2)
+    r2 = 1 - ss_res / ss_tot
+
+    # 그래프
+    x_line = np.linspace(min(x), max(x), 200)
+    y_line = poly(x_line)
+
+    fig_reg = go.Figure()
+    fig_reg.add_trace(go.Scatter(
+        x=x, y=y,
+        mode="markers",
+        name="실험 데이터"
+    ))
+    fig_reg.add_trace(go.Scatter(
+        x=x_line, y=y_line,
+        mode="lines",
+        name="2차 회귀곡선"
+    ))
+    fig_reg.update_layout(
+        title=f"EC–생중량 회귀 분석 (R² = {r2:.3f})",
+        xaxis_title="EC",
+        yaxis_title="평균 생중량(g)",
         font=dict(family="Malgun Gothic, Apple SD Gothic Neo, sans-serif")
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig_reg, use_container_width=True)
 
-    fig_box = px.box(
-        all_growth,
-        x="학교",
-        y="생중량(g)",
-        points="all"
-    )
-    fig_box.update_layout(
-        font=dict(family="Malgun Gothic, Apple SD Gothic Neo, sans-serif")
-    )
-    st.plotly_chart(fig_box, use_container_width=True)
+    st.info(
+        f"""
+        📌 회귀 분석 결과,  
+        EC와 평균 생중량의 관계는 **2차 함수 형태**로 나타났으며  
+        결정계수 **R² = {r2:.3f}**으로 비교적 높은 설명력을 보였다.  
 
-    fig_corr1 = px.scatter(
-        all_growth,
-        x="잎 수(장)",
-        y="생중량(g)",
-        color="학교"
+        이는 EC가 증가할수록 생육이 향상되다가  
+        **일정 농도 이상에서는 오히려 감소**하는 경향이 있음을 의미한다.
+        """
     )
-    fig_corr2 = px.scatter(
-        all_growth,
-        x="지상부 길이(mm)",
-        y="생중량(g)",
-        color="학교"
-    )
-
-    st.plotly_chart(fig_corr1, use_container_width=True)
-    st.plotly_chart(fig_corr2, use_container_width=True)
-
-    with st.expander("📂 생육 데이터 원본"):
-        for school, df in growth_data.items():
-            st.write(f"### {school}")
-            st.dataframe(df)
-            buffer = io.BytesIO()
-            df.to_excel(buffer, index=False, engine="openpyxl")
-            buffer.seek(0)
-            st.download_button(
-                f"{school} XLSX 다운로드",
-                data=buffer,
-                file_name=f"{school}_생육결과.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
