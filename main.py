@@ -277,6 +277,56 @@ with tab3:
                 file_name=f"{school}_생육결과.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
+    st.subheader("📈 EC–생중량 회귀 분석 (실험값 + 모델)")
+
+# 회귀 곡선용 x 범위
+x_line = np.linspace(min(x), max(x), 300)
+y_line = model(x_line)
+
+fig_reg = go.Figure()
+
+# ① 실제 실험 데이터 점
+fig_reg.add_trace(
+    go.Scatter(
+        x=x,
+        y=y,
+        mode="markers",
+        name="실제 평균 생중량",
+        marker=dict(size=10)
+    )
+)
+
+# ② 회귀 곡선
+fig_reg.add_trace(
+    go.Scatter(
+        x=x_line,
+        y=y_line,
+        mode="lines",
+        name="2차 회귀 모델",
+        line=dict(width=3)
+    )
+)
+
+# ③ 최적 EC 강조
+fig_reg.add_trace(
+    go.Scatter(
+        x=[best_ec],
+        y=[model(best_ec)],
+        mode="markers",
+        name="최적 EC",
+        marker=dict(size=14, symbol="star")
+    )
+)
+
+fig_reg.update_layout(
+    xaxis_title="EC",
+    yaxis_title="평균 생중량(g)",
+    font=dict(family="Malgun Gothic, Apple SD Gothic Neo, sans-serif"),
+    height=500
+)
+
+st.plotly_chart(fig_reg, use_container_width=True)
+
 # =========================
 # 🔥 추가 TAB 구성 (기존 코드 아래에 이어서)
 # =========================
